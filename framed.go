@@ -44,14 +44,14 @@ A Framed enhances an io.ReadWriteCloser to provide methods that allow writing
 and reading frames.
 
 Although the underlying ReadWriteCloser may be safe to use from multiple
-goroutines, a FramedStream is not.
+goroutines, a Framed is not.
 */
 type Framed struct {
 	io.ReadWriteCloser // the raw underlying connection
 }
 
 /*
-ReadFrame reads the next frame from the FramedStream.
+ReadFrame reads the next frame from the Framed.
 */
 func (framed Framed) ReadFrame() (frame []byte, err error) {
 	var numBytes uint16
@@ -71,7 +71,7 @@ func (framed Framed) ReadFrame() (frame []byte, err error) {
 }
 
 /*
-WriteFrame writes a frame to the FramedStream.
+WriteFrame writes a frame to the Framed.
 */
 func (framed Framed) WriteFrame(frame []byte) (err error) {
 	numBytes := uint16(len(frame))
