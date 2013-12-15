@@ -71,11 +71,16 @@ func (framed Framed) ReadFrame() (frame []byte, err error) {
 }
 
 /*
-WriteFrame writes a frame to the Framed.
+WriteFrame writes all of the supplied bytes to the Framed as a single frame.
 */
-func (framed Framed) WriteFrame(frame []byte) (err error) {
-	numBytes := uint16(len(frame))
+func (framed Framed) WriteFrame(byteArrays ...[]byte) (err error) {
+	var numBytes uint16
+	for _, bytes := range(byteArrays) {
+		numBytes += uint16(len(bytes))
+	}
 	err = binary.Write(framed, ENDIANESS, numBytes)
-	framed.Write(frame)
+	for _, bytes := range(byteArrays) {
+		framed.Write(bytes)
+	}
 	return
 }

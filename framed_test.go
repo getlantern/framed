@@ -22,10 +22,12 @@ func (buffer CloseableBuffer) Close() (err error) {
 }
 
 func TestFraming(t *testing.T) {
+	msgPart1 := []byte("This is a ")
+	msgPart2 := []byte("test message")
 	testMessage := []byte("This is a test message")
 	buffer := CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}
 	fbuffer := Framed{buffer}
-	if err := fbuffer.WriteFrame(testMessage); err != nil {
+	if err := fbuffer.WriteFrame(msgPart1, msgPart2); err != nil {
 		t.Errorf("Unable to write: %s", err)
 	}
 	if receivedMsg, err := fbuffer.ReadFrame(); err != nil {
