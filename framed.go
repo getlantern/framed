@@ -35,9 +35,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"bytes"
 )
 
-var ENDIANESS = binary.LittleEndian
+var endianness = binary.LittleEndian
 
 /*
 A Framed enhances an io.ReadWriteCloser to provide methods that allow writing
@@ -55,7 +56,7 @@ ReadFrame reads the next frame from the Framed.
 */
 func (framed Framed) ReadFrame() (frame []byte, err error) {
 	var numBytes uint16
-	err = binary.Read(framed, ENDIANESS, &numBytes)
+	err = binary.Read(framed, endianness, &numBytes)
 	if err != nil {
 		return
 	}
@@ -78,9 +79,16 @@ func (framed Framed) WriteFrame(byteArrays ...[]byte) (err error) {
 	for _, bytes := range(byteArrays) {
 		numBytes += uint16(len(bytes))
 	}
-	err = binary.Write(framed, ENDIANESS, numBytes)
-	for _, bytes := range(byteArrays) {
-		framed.Write(bytes)
+	err = binary.Write(framed, endianness, numBytes)
+	buf := bytes.NewBuffer(make([]byte, 0))
+	for _, b := range(byteArrays) {
+		buf.Write(b) 
 	}
+	framed.Write(buf.Bytes())
+	// TODO: figure out why the below doesn't work reliably with ftcp, as it
+	// might be a little more efficient if we can get it to work
+//	for _, bytes := range(byteArrays) {
+//		framed.Write(bytes)
+//	}
 	return
 }
