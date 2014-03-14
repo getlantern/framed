@@ -10,13 +10,13 @@ The use of a uint16 means that the maximum possible data length is 65535.
 Example:
 
 	package main
-	
+
 	import (
 		"github.com/oxtoacart/framed"
 		"net"
 		"log"
 	)
-	
+
 	func main() {
 		// Replace host:port with an actual TCP server, for example the echo service
 		if conn, err := net.Dial("tcp", "host:port"); err == nil {
@@ -24,7 +24,7 @@ Example:
 			if err := framedConn.Write([]byte("Hello World")); err == nil {
 				if resp, err := framedConn.Read(); err == nil {
 					log.Println("We're done!")
-				}	
+				}
 			}
 		}
 	}
@@ -33,9 +33,7 @@ package framed
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
-	"bytes"
 )
 
 var endianness = binary.LittleEndian
@@ -55,18 +53,20 @@ type Framed struct {
 ReadFrame reads the next frame from the Framed.
 */
 func (framed Framed) ReadFrame() (frame []byte, err error) {
-	var numBytes uint16
-	err = binary.Read(framed, endianness, &numBytes)
+	var nb uint16
+	err = binary.Read(framed, endianness, &nb)
 	if err != nil {
 		return
 	}
+	numBytes := int(nb)
 	frame = make([]byte, numBytes)
-	bytesRead, err := framed.Read(frame)
-	if err != nil {
-		return
-	}
-	if bytesRead < int(numBytes) {
-		err = fmt.Errorf("Too few bytes read.  Expected %s, got %s", numBytes, bytesRead)
+	for totalRead := 0; totalRead < numBytes; {
+		var bytesRead int
+		bytesRead, err = framed.Read(frame[totalRead:])
+		if err != nil {
+			return
+		}
+		totalRead += bytesRead
 	}
 	return
 }
@@ -76,19 +76,12 @@ WriteFrame writes all of the supplied bytes to the Framed as a single frame.
 */
 func (framed Framed) WriteFrame(byteArrays ...[]byte) (err error) {
 	var numBytes uint16
-	for _, bytes := range(byteArrays) {
+	for _, bytes := range byteArrays {
 		numBytes += uint16(len(bytes))
 	}
 	err = binary.Write(framed, endianness, numBytes)
-	buf := bytes.NewBuffer(make([]byte, 0))
-	for _, b := range(byteArrays) {
-		buf.Write(b) 
+	for _, bytes := range byteArrays {
+		framed.Write(bytes)
 	}
-	framed.Write(buf.Bytes())
-	// TODO: figure out why the below doesn't work reliably with ftcp, as it
-	// might be a little more efficient if we can get it to work
-//	for _, bytes := range(byteArrays) {
-//		framed.Write(bytes)
-//	}
 	return
 }
