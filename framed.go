@@ -81,7 +81,9 @@ func (framed Framed) WriteFrame(byteArrays ...[]byte) (err error) {
 	}
 	err = binary.Write(framed, endianness, numBytes)
 	for _, bytes := range byteArrays {
-		framed.Write(bytes)
+		if _, err = framed.Write(bytes); err != nil {
+			return
+		}
 	}
 	return
 }
