@@ -68,6 +68,7 @@ func server() {
 										if err != nil {
 											log.Printf("Unable to create heap profile file: %s", err)
 										} else {
+											defer file.Close()
 											if err := pprof.WriteHeapProfile(file); err != nil {
 												log.Printf("Unable to write heap profile: %s", err)
 											} else {
