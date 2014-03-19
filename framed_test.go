@@ -2,6 +2,7 @@ package framed
 
 import (
 	"bytes"
+	"io/ioutil"
 	"testing"
 )
 
@@ -21,7 +22,7 @@ func (buffer CloseableBuffer) Close() (err error) {
 	return
 }
 
-func TestReadToBytes(t *testing.T) {
+func TestWriteAndRead(t *testing.T) {
 	header := []byte("Header Header header Header")
 	body := []byte("Body Body Body Body Body Body")
 	buffer := CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}
@@ -33,65 +34,32 @@ func TestReadToBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unable to read frame: %s", err)
 	}
-	readHeader := make([]byte, len(header))
-	readBody := make([]byte, len(body))
 	if int(frame.headerLength) != len(header) {
 		t.Errorf("Expected headerLength %d, got %d", len(header), frame.headerLength)
 	}
 	if int(frame.bodyLength) != len(body) {
 		t.Errorf("Expected headerLength %d, got %d", len(body), frame.bodyLength)
 	}
-	if _, err = frame.ReadHeader(readHeader); err != nil {
-		t.Fatalf("Unable to read header: %s", err)
+	fh, err := frame.Header()
+	if err != nil {
+		t.Fatalf("Unable to get header: %s", err)
 	}
-	if _, err = frame.ReadBody(readBody); err != nil {
-		t.Fatalf("Unable to read body: %s", err)
+	fb, err := frame.Body()
+	if err != nil {
+		t.Fatalf("Unable to get body: %s", err)
+	}
+	readHeader, err := ioutil.ReadAll(fh)
+	if err != nil {
+		t.Fatalf("Error reading header: %s", err)
+	}
+	readBody, err := ioutil.ReadAll(fb)
+	if err != nil {
+		t.Fatalf("Error reading body: %s", err)
 	}
 	if !bytes.Equal(readHeader, header) {
 		t.Errorf("Header did not match expected.  Expected: '%s', Received: '%s'", string(header), string(readHeader))
 	}
 	if !bytes.Equal(readBody, body) {
 		t.Errorf("Body did not match expected.  Expected: '%s', Received: '%s'", string(body), string(readBody))
-	}
-}
-
-func TestReadToStreamWithCopy(t *testing.T) {
-	header := []byte("Header Header header Header")
-	body := []byte("Body Body Body Body Body Body")
-	buffer := CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}
-	fbuffer := NewFramed(buffer)
-	buffer2 := CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}
-	fbuffer2 := NewFramed(buffer2)
-	if err := fbuffer.WriteFrame(header, body); err != nil {
-		t.Fatalf("Unable to write: %s", err)
-	}
-	frame, err := fbuffer.ReadInitial()
-	if err != nil {
-		t.Fatalf("Unable to read frame: %s", err)
-	}
-	frame.CopyTo(buffer2)
-	frame, err = fbuffer2.ReadInitial()
-	if err != nil {
-		t.Fatalf("Unable to read frame: %s", err)
-	}
-	readHeader := bytes.NewBuffer(make([]byte, 0))
-	readBody := bytes.NewBuffer(make([]byte, 0))
-	if int(frame.headerLength) != len(header) {
-		t.Errorf("Expected headerLength %d, got %d", len(header), frame.headerLength)
-	}
-	if int(frame.bodyLength) != len(body) {
-		t.Errorf("Expected headerLength %d, got %d", len(body), frame.bodyLength)
-	}
-	if err = frame.CopyHeader(readHeader); err != nil {
-		t.Fatalf("Unable to read header: %s", err)
-	}
-	if err = frame.CopyBody(readBody); err != nil {
-		t.Fatalf("Unable to read body: %s", err)
-	}
-	if !bytes.Equal(readHeader.Bytes(), header) {
-		t.Errorf("Header did not match expected.  Expected: '%s', Received: '%s'", string(header), string(readHeader.Bytes()))
-	}
-	if !bytes.Equal(readBody.Bytes(), body) {
-		t.Errorf("Body did not match expected.  Expected: '%s', Received: '%s'", string(body), string(readBody.Bytes()))
 	}
 }

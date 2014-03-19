@@ -38,7 +38,6 @@ package framed
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"io/ioutil"
 )
@@ -77,6 +76,12 @@ type Frame struct {
 	hasReadBody   bool
 }
 
+type FrameSection struct {
+	frame          *Frame
+	init           func() error
+	bytesRemaining int
+}
+
 func NewFramed(readWriteCloser io.ReadWriteCloser) *Framed {
 	return &Framed{readWriteCloser, false}
 }
@@ -95,62 +100,53 @@ func (framed *Framed) ReadInitial() (frame *Frame, err error) {
 
 func (frame *Frame) NextFrame() (nextFrame *Frame, err error) {
 	if !frame.hasReadBody {
-		frame.CopyBody(ioutil.Discard)
+		if body, err := frame.Body(); err != nil {
+			return nil, err
+		} else if _, err = io.Copy(ioutil.Discard, body); err != nil {
+			return nil, err
+		}
 	}
 	nextFrame, err = frame.framed.nextFrame()
 	return
 }
 
-func (frame *Frame) CopyHeader(out io.Writer) (err error) {
+func (frame *Frame) Header() (header *FrameSection, err error) {
 	if frame.hasReadHeader {
-		return AlreadyReadError("Header Already Read")
+		return nil, AlreadyReadError("Header Already Read")
 	}
-	_, err = io.CopyN(out, frame.framed, int64(frame.headerLength))
+	header = &FrameSection{frame: frame, bytesRemaining: int(frame.headerLength)}
 	frame.hasReadHeader = true
 	return
 }
 
-func (frame *Frame) CopyBody(out io.Writer) (err error) {
-	if !frame.hasReadHeader {
-		if err := frame.CopyHeader(ioutil.Discard); err != nil {
-			return err
-		}
-	}
+func (frame *Frame) Body() (body *FrameSection, err error) {
 	if frame.hasReadBody {
-		err = AlreadyReadError("Body Already Read")
-		return
+		return nil, AlreadyReadError("Body Already Read")
 	}
-	_, err = io.CopyN(out, frame.framed, int64(frame.bodyLength))
+	body = &FrameSection{frame: frame, bytesRemaining: int(frame.bodyLength), init: frame.readHeaderIfNecessary}
 	frame.hasReadBody = true
 	return
 }
 
-func (frame *Frame) ReadHeader(buffer []byte) (n int, err error) {
-	if len(buffer) < int(frame.headerLength) {
-		return 0, BufferTooSmall(fmt.Sprintf("Buffer too small. %d bytes required for header.", frame.headerLength))
-	}
-	if frame.hasReadHeader {
-		return 0, AlreadyReadError("Header Already Read")
-	}
-	frame.framed.Read(buffer[0:frame.headerLength])
-	frame.hasReadHeader = true
-	return
-}
-
-func (frame *Frame) ReadBody(buffer []byte) (n int, err error) {
-	if len(buffer) < int(frame.bodyLength) {
-		return 0, BufferTooSmall(fmt.Sprintf("Buffer too small. %d bytes required for body.", frame.bodyLength))
-	}
-	if !frame.hasReadHeader {
-		if err := frame.CopyHeader(ioutil.Discard); err != nil {
+func (section *FrameSection) Read(p []byte) (n int, err error) {
+	if section.init != nil {
+		if err = section.init(); err != nil {
 			return 0, err
 		}
 	}
-	if frame.hasReadBody {
-		return 0, AlreadyReadError("Body Already Read")
+	if section.bytesRemaining == 0 {
+		return 0, err
 	}
-	frame.framed.Read(buffer[0:frame.bodyLength])
-	frame.hasReadBody = true
+	if len(p) > section.bytesRemaining {
+		p = p[0:section.bytesRemaining]
+	}
+	n, err = section.frame.framed.Read(p)
+	if n > 0 {
+		section.bytesRemaining -= n
+	}
+	if section.bytesRemaining == 0 {
+		err = io.EOF
+	}
 	return
 }
 
@@ -170,13 +166,13 @@ func (framed *Framed) WriteHeader(headerLength int16, bodyLength int16) (err err
 }
 
 func (frame *Frame) CopyTo(out io.Writer) (err error) {
+	if frame.hasReadHeader || frame.hasReadBody {
+		return AlreadyReadError("Already read from frame, cannot copy")
+	}
 	if err = writeHeaderTo(out, frame.headerLength, frame.bodyLength); err != nil {
 		return
 	}
-	if err = frame.CopyHeader(out); err != nil {
-		return
-	}
-	err = frame.CopyBody(out)
+	_, err = io.CopyN(out, frame.framed, int64(frame.headerLength+frame.bodyLength))
 	return
 }
 
@@ -186,6 +182,17 @@ func (frame *Frame) readLengths() (err error) {
 	}
 	err = binary.Read(frame.framed, endianness, &frame.bodyLength)
 	return
+}
+
+func (frame *Frame) readHeaderIfNecessary() error {
+	if !frame.hasReadHeader {
+		if header, err := frame.Header(); err != nil {
+			return err
+		} else if _, err = io.Copy(ioutil.Discard, header); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func writeHeaderTo(out io.Writer, headerLength int16, bodyLength int16) (err error) {
