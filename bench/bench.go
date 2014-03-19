@@ -66,9 +66,12 @@ func server() {
 										pprof.StopCPUProfile()
 										file, err := os.Create(fmt.Sprintf("/tmp/framed_heap_%s", *mode))
 										if err != nil {
-											log.Fatal("Unable to create heap profile file: %s", err)
+											log.Printf("Unable to create heap profile file: %s", err)
+										} else {
+											if err := pprof.WriteHeapProfile(file); err != nil {
+												log.Printf("Unable to write heap profile: %s", err)
+											}
 										}
-										pprof.WriteHeapProfile(file)
 									}
 									log.Fatalf("Unable to copy: %s", err)
 								} else {
