@@ -32,7 +32,7 @@ Example:
 					// Note - Read is just like io.Reader.Read(), so we use ioutil.ReadAll
 					if header, err := ioutil.ReadAll(framedConn.Header); err == nil {
 						if body, err := ioutil.ReadAll(framedConn.Body); err == nil {
-							nextFrame, err := frame.NextFrame()
+							nextFrame, err := frame.Next()
 							// And so on
 						}
 					}
@@ -108,11 +108,11 @@ func (framed *Framed) ReadInitial() (frame *Frame, err error) {
 }
 
 /*
-NextFrame returns the next frame from the Framed underlying the frame on which
+Next returns the next frame from the Framed underlying the frame on which
 it is called.  This method blocks until the previous frame has been consumed.
 If there are no more frames, it returns io.EOF as an error.
 */
-func (frame *Frame) NextFrame() (nextFrame *Frame, err error) {
+func (frame *Frame) Next() (nextFrame *Frame, err error) {
 	<-frame.completelyRead
 	return frame.framed.nextFrame()
 }
