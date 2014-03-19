@@ -19,8 +19,9 @@ const (
 )
 
 var (
-	mode = flag.String("mode", "server", "Mode (server or client)")
-	wg   sync.WaitGroup
+	mode        = flag.String("mode", "server", "Mode (server or client)")
+	shouldFrame = flag.Bool("framed", false, "Whether or not run in framed mode")
+	wg          sync.WaitGroup
 )
 
 func main() {
@@ -48,23 +49,27 @@ func server() {
 			if conn, err := listener.Accept(); err != nil {
 				log.Printf("Unable to accept: %s", err)
 			} else {
-				f := framed.NewFramed(conn)
-				go func() {
-					if frame, err := f.ReadInitial(); err != nil {
-						log.Printf("Unable to read initial frame: %s", frame)
-					} else {
-						for {
-							if err := frame.CopyTo(conn); err != nil {
-								pprof.StopCPUProfile()
-								log.Fatalf("Unable to copy: %s", err)
-							} else {
-								if frame, err = frame.Next(); err != nil {
-									log.Fatalf("Unable to read next frame")
+				if *shouldFrame {
+					f := framed.NewFramed(conn)
+					go func() {
+						if frame, err := f.ReadInitial(); err != nil {
+							log.Printf("Unable to read initial frame: %s", frame)
+						} else {
+							for {
+								if err := frame.CopyTo(conn); err != nil {
+									pprof.StopCPUProfile()
+									log.Fatalf("Unable to copy: %s", err)
+								} else {
+									if frame, err = frame.Next(); err != nil {
+										log.Fatalf("Unable to read next frame")
+									}
 								}
 							}
 						}
-					}
-				}()
+					}()
+				} else {
+					go io.Copy(conn, conn)
+				}
 			}
 		}
 	}
