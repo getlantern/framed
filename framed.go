@@ -72,11 +72,12 @@ func (err AlreadyReadError) Error() string {
 
 // Frame encapsulates a frame from a Framed
 type Frame struct {
-	framed       *Framed
-	headerLength uint16
-	bodyLength   uint16
-	header       *FrameSection
-	body         *FrameSection
+	framed         *Framed
+	headerLength   uint16
+	bodyLength     uint16
+	header         *FrameSection
+	body           *FrameSection
+	completelyRead chan bool
 }
 
 // FrameSection encapsulates a section of a frame (header or body)
@@ -107,17 +108,12 @@ func (framed *Framed) ReadInitial() (frame *Frame, err error) {
 
 /*
 NextFrame returns the next frame from the Framed underlying the frame on which
-it is called.
+it is called.  This method blocks until the previous frame has been consumed.
+If there are no more frames, it returns io.EOF as an error.
 */
 func (frame *Frame) NextFrame() (nextFrame *Frame, err error) {
-	if err = frame.header.drain(); err != nil {
-		return
-	}
-	if err = frame.body.drain(); err != nil {
-		return
-	}
-	nextFrame, err = frame.framed.nextFrame()
-	return
+	<-frame.completelyRead
+	return frame.framed.nextFrame()
 }
 
 /*
@@ -216,7 +212,7 @@ func (frame *Frame) Body() io.Reader {
 }
 
 func (framed *Framed) nextFrame() (frame *Frame, err error) {
-	frame = &Frame{framed: framed}
+	frame = &Frame{framed: framed, completelyRead: make(chan bool)}
 	frame.header = &FrameSection{frame: frame}
 	frame.body = &FrameSection{frame: frame, init: frame.header.drain}
 	if err = frame.readLengths(); err != nil {
