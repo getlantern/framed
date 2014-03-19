@@ -18,17 +18,24 @@ Example:
 
 	import (
 		"github.com/oxtoacart/framed"
-		"net"
+		"io/ioutil"
 		"log"
+		"net"
 	)
 
 	func main() {
 		// Replace host:port with an actual TCP server, for example the echo service
 		if conn, err := net.Dial("tcp", "host:port"); err == nil {
 			framedConn = Framed{conn}
-			if err := framedConn.Write([]byte("Hello World")); err == nil {
-				if resp, err := framedConn.Read(); err == nil {
-					log.Println("We're done!")
+			if err := framedConn.WriteFrame([]byte("Header"), []byte("Hello World")); err == nil {
+				if err, frame := framedConn.ReadInitial(); err == nil {
+					// Note - Read is just like io.Reader.Read(), so we use ioutil.ReadAll
+					if header, err := ioutil.ReadAll(framedConn.Header); err == nil {
+						if body, err := ioutil.ReadAll(framedConn.Body); err == nil {
+							nextFrame, err := frame.NextFrame()
+							// And so on
+						}
+					}
 				}
 			}
 		}
@@ -56,18 +63,14 @@ type Framed struct {
 	hasReadInitial     bool
 }
 
+// AlreadyReadError is returned when someone has already read from a Frame
 type AlreadyReadError string
 
 func (err AlreadyReadError) Error() string {
 	return string(err)
 }
 
-type BufferTooSmall string
-
-func (err BufferTooSmall) Error() string {
-	return string(err)
-}
-
+// Frame encapsulates a frame from a Framed
 type Frame struct {
 	Header       *FrameSection
 	Body         *FrameSection
@@ -76,6 +79,7 @@ type Frame struct {
 	bodyLength   int16
 }
 
+// FrameSection encapsulates a section of a frame (header or body)
 type FrameSection struct {
 	frame          *Frame
 	init           func() error
@@ -83,12 +87,14 @@ type FrameSection struct {
 	startedReading bool
 }
 
+// NewFramed creates a new Framed on top of the given readWriteCloser
 func NewFramed(readWriteCloser io.ReadWriteCloser) *Framed {
 	return &Framed{readWriteCloser, false}
 }
 
 /*
-ReadInitial reads the initial frame from the framed
+ReadInitial reads the initial frame from the framed.  It returns an
+AlreadyReadError if the initial frame has already been read previously.
 */
 func (framed *Framed) ReadInitial() (frame *Frame, err error) {
 	if framed.hasReadInitial {
@@ -99,6 +105,10 @@ func (framed *Framed) ReadInitial() (frame *Frame, err error) {
 	return
 }
 
+/*
+NextFrame returns the next frame from the Framed underlying the frame on which
+it is called.
+*/
 func (frame *Frame) NextFrame() (nextFrame *Frame, err error) {
 	if err = frame.Header.drain(); err != nil {
 		return
@@ -110,21 +120,47 @@ func (frame *Frame) NextFrame() (nextFrame *Frame, err error) {
 	return
 }
 
+/*
+WriteFrame writes the given header and body to the Framed.
+Either or both can be nil.
+*/
 func (framed *Framed) WriteFrame(header []byte, body []byte) (err error) {
-	if err = framed.WriteHeader(int16(len(header)), int16(len(body))); err != nil {
+	headerLength := 0
+	bodyLength := 0
+	if header != nil {
+		headerLength = len(header)
+	}
+	if body != nil {
+		bodyLength = len(body)
+	}
+
+	if err = framed.WriteHeader(int16(headerLength), int16(bodyLength)); err != nil {
 		return err
 	}
-	if _, err = framed.Write(header); err != nil {
-		return err
+
+	if header != nil {
+		if _, err = framed.Write(header); err != nil {
+			return err
+		}
 	}
-	_, err = framed.Write(body)
+
+	if body != nil {
+		_, err = framed.Write(body)
+	}
+
 	return
 }
 
+// WriteHeader writes a frame header with the given lengths to the Framed.
 func (framed *Framed) WriteHeader(headerLength int16, bodyLength int16) (err error) {
 	return writeHeaderTo(framed, headerLength, bodyLength)
 }
 
+/*
+CopyTo copies the given Frame to the given Writer.  If reading of the Frame
+has already started before CopyTo is called, CopyTo returns an
+AlreadyReadError.
+*/
 func (frame *Frame) CopyTo(out io.Writer) (err error) {
 	if frame.Header.startedReading || frame.Body.startedReading {
 		return AlreadyReadError("Already read from frame, cannot copy")
@@ -136,6 +172,10 @@ func (frame *Frame) CopyTo(out io.Writer) (err error) {
 	return
 }
 
+/*
+Read implements io.Reader.Read for a FrameSection.  Just like the usual Read(),
+this one may read incompletely, so make sure to call it until it returns EOF.
+*/
 func (section *FrameSection) Read(p []byte) (n int, err error) {
 	if section.bytesRemaining == 0 {
 		return 0, err
