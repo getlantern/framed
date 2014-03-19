@@ -157,22 +157,6 @@ func (framed *Framed) WriteHeader(headerLength uint16, bodyLength uint16) (err e
 }
 
 /*
-CopyTo copies the given Frame to the given Writer.  If reading of the Frame
-has already started before CopyTo is called, CopyTo returns an
-AlreadyReadError.
-*/
-func (frame *Frame) CopyTo(out io.Writer) (err error) {
-	if frame.header.startedReading || frame.body.startedReading {
-		return AlreadyReadError("Already read from frame, cannot copy")
-	}
-	if err = writeHeaderTo(out, frame.headerLength, frame.bodyLength); err != nil {
-		return
-	}
-	_, err = io.CopyN(out, frame.framed, int64(frame.headerLength+frame.bodyLength))
-	return
-}
-
-/*
 Read implements io.Reader.Read for a FrameSection.  Just like the usual Read(),
 this one may read incompletely, so make sure to call it until it returns EOF.
 */
