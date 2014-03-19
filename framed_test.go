@@ -42,10 +42,10 @@ func TestWriteAndRead(t *testing.T) {
 	if frame, err = fbuffer2.ReadInitial(); err != nil {
 		t.Fatalf("Unable to read initial frame from copy: %s", err)
 	}
-	if frame.HeaderLength() != len(header) {
+	if int(frame.HeaderLength()) != len(header) {
 		t.Errorf("Expected headerLength %d, got %d", len(header), frame.HeaderLength())
 	}
-	if frame.BodyLength() != len(body) {
+	if int(frame.BodyLength()) != len(body) {
 		t.Errorf("Expected headerLength %d, got %d", len(body), frame.BodyLength())
 	}
 	readHeader, err := ioutil.ReadAll(frame.Header())

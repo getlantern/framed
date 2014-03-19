@@ -199,12 +199,12 @@ func (section *FrameSection) Read(p []byte) (n int, err error) {
 	return
 }
 
-func (frame *Frame) HeaderLength() int {
-	return int(frame.headerLength)
+func (frame *Frame) HeaderLength() uint16 {
+	return frame.headerLength
 }
 
-func (frame *Frame) BodyLength() int {
-	return int(frame.bodyLength)
+func (frame *Frame) BodyLength() uint16 {
+	return frame.bodyLength
 }
 
 func (frame *Frame) Header() io.Reader {
