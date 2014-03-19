@@ -27,12 +27,20 @@ func TestWriteAndRead(t *testing.T) {
 	body := []byte("Body Body Body Body Body Body")
 	buffer := CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}
 	fbuffer := NewFramed(buffer)
+	buffer2 := CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}
+	fbuffer2 := NewFramed(buffer2)
 	if err := fbuffer.WriteFrame(header, body); err != nil {
 		t.Fatalf("Unable to write: %s", err)
 	}
 	frame, err := fbuffer.ReadInitial()
 	if err != nil {
 		t.Fatalf("Unable to read frame: %s", err)
+	}
+	if err = frame.CopyTo(buffer2); err != nil {
+		t.Fatalf("Unable to copy frame")
+	}
+	if frame, err = fbuffer2.ReadInitial(); err != nil {
+		t.Fatalf("Unable to read initial frame from copy: %s", err)
 	}
 	if frame.HeaderLength() != len(header) {
 		t.Errorf("Expected headerLength %d, got %d", len(header), frame.HeaderLength())
