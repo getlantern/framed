@@ -2,6 +2,7 @@ package framed
 
 import (
 	"bytes"
+	"io"
 	"io/ioutil"
 	"testing"
 )
@@ -36,30 +37,36 @@ func TestWriteAndRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unable to read frame: %s", err)
 	}
-	if err = frame.CopyTo(buffer2); err != nil {
-		t.Fatalf("Unable to copy frame")
-	}
-	if frame, err = fbuffer2.ReadInitial(); err != nil {
-		t.Fatalf("Unable to read initial frame from copy: %s", err)
-	}
-	if int(frame.HeaderLength()) != len(header) {
-		t.Errorf("Expected headerLength %d, got %d", len(header), frame.HeaderLength())
-	}
-	if int(frame.BodyLength()) != len(body) {
-		t.Errorf("Expected headerLength %d, got %d", len(body), frame.BodyLength())
-	}
-	readHeader, err := ioutil.ReadAll(frame.Header())
-	if err != nil {
-		t.Fatalf("Error reading header: %s", err)
-	}
-	readBody, err := ioutil.ReadAll(frame.Body())
-	if err != nil {
-		t.Fatalf("Error reading body: %s", err)
-	}
-	if !bytes.Equal(readHeader, header) {
-		t.Errorf("Header did not match expected.  Expected: '%s', Received: '%s'", string(header), string(readHeader))
-	}
-	if !bytes.Equal(readBody, body) {
-		t.Errorf("Body did not match expected.  Expected: '%s', Received: '%s'", string(body), string(readBody))
+	go func() {
+		if err = frame.CopyTo(buffer2); err != nil {
+			t.Fatalf("Unable to copy frame")
+		}
+		if frame, err = fbuffer2.ReadInitial(); err != nil {
+			t.Fatalf("Unable to read initial frame from copy: %s", err)
+		}
+		if int(frame.HeaderLength()) != len(header) {
+			t.Errorf("Expected headerLength %d, got %d", len(header), frame.HeaderLength())
+		}
+		if int(frame.BodyLength()) != len(body) {
+			t.Errorf("Expected headerLength %d, got %d", len(body), frame.BodyLength())
+		}
+		readHeader, err := ioutil.ReadAll(frame.Header())
+		if err != nil {
+			t.Fatalf("Error reading header: %s", err)
+		}
+		readBody, err := ioutil.ReadAll(frame.Body())
+		if err != nil {
+			t.Fatalf("Error reading body: %s", err)
+		}
+		if !bytes.Equal(readHeader, header) {
+			t.Errorf("Header did not match expected.  Expected: '%s', Received: '%s'", string(header), string(readHeader))
+		}
+		if !bytes.Equal(readBody, body) {
+			t.Errorf("Body did not match expected.  Expected: '%s', Received: '%s'", string(body), string(readBody))
+		}
+	}()
+	_, err = frame.Next()
+	if err != io.EOF {
+		t.Errorf("Expected EOF at end")
 	}
 }

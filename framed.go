@@ -166,6 +166,7 @@ func (frame *Frame) CopyTo(out io.Writer) (err error) {
 		return
 	}
 	_, err = io.CopyN(out, frame.framed, int64(frame.headerLength+frame.bodyLength))
+	frame.completelyRead <- true
 	return
 }
 
@@ -196,6 +197,13 @@ func (section *FrameSection) Read(p []byte) (n int, err error) {
 	return
 }
 
+func (section *FrameSection) Drain() (err error) {
+	if section.bytesRemaining > 0 {
+		_, err = io.Copy(ioutil.Discard, section)
+	}
+	return
+}
+
 func (frame *Frame) HeaderLength() uint16 {
 	return frame.headerLength
 }
@@ -215,7 +223,7 @@ func (frame *Frame) Body() io.Reader {
 func (framed *Framed) nextFrame() (frame *Frame, err error) {
 	frame = &Frame{framed: framed, completelyRead: make(chan bool)}
 	frame.header = &FrameSection{frame: frame}
-	frame.body = &FrameSection{frame: frame, init: frame.header.drain, finish: frame.done}
+	frame.body = &FrameSection{frame: frame, init: frame.header.Drain, finish: frame.done}
 	if err = frame.readLengths(); err != nil {
 		return
 	}
@@ -231,13 +239,6 @@ func (frame *Frame) readLengths() (err error) {
 	}
 	frame.header.bytesRemaining = int(frame.headerLength)
 	frame.body.bytesRemaining = int(frame.bodyLength)
-	return
-}
-
-func (section *FrameSection) drain() (err error) {
-	if section.bytesRemaining > 0 {
-		_, err = io.Copy(ioutil.Discard, section)
-	}
 	return
 }
 
