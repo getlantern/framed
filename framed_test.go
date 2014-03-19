@@ -34,17 +34,17 @@ func TestWriteAndRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unable to read frame: %s", err)
 	}
-	if int(frame.headerLength) != len(header) {
-		t.Errorf("Expected headerLength %d, got %d", len(header), frame.headerLength)
+	if frame.HeaderLength() != len(header) {
+		t.Errorf("Expected headerLength %d, got %d", len(header), frame.HeaderLength())
 	}
-	if int(frame.bodyLength) != len(body) {
-		t.Errorf("Expected headerLength %d, got %d", len(body), frame.bodyLength)
+	if frame.BodyLength() != len(body) {
+		t.Errorf("Expected headerLength %d, got %d", len(body), frame.BodyLength())
 	}
-	readHeader, err := ioutil.ReadAll(frame.Header)
+	readHeader, err := ioutil.ReadAll(frame.Header())
 	if err != nil {
 		t.Fatalf("Error reading header: %s", err)
 	}
-	readBody, err := ioutil.ReadAll(frame.Body)
+	readBody, err := ioutil.ReadAll(frame.Body())
 	if err != nil {
 		t.Fatalf("Error reading body: %s", err)
 	}

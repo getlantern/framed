@@ -72,11 +72,11 @@ func (err AlreadyReadError) Error() string {
 
 // Frame encapsulates a frame from a Framed
 type Frame struct {
-	Header       *FrameSection
-	Body         *FrameSection
 	framed       *Framed
 	headerLength uint16
 	bodyLength   uint16
+	header       *FrameSection
+	body         *FrameSection
 }
 
 // FrameSection encapsulates a section of a frame (header or body)
@@ -110,10 +110,10 @@ NextFrame returns the next frame from the Framed underlying the frame on which
 it is called.
 */
 func (frame *Frame) NextFrame() (nextFrame *Frame, err error) {
-	if err = frame.Header.drain(); err != nil {
+	if err = frame.header.drain(); err != nil {
 		return
 	}
-	if err = frame.Body.drain(); err != nil {
+	if err = frame.body.drain(); err != nil {
 		return
 	}
 	nextFrame, err = frame.framed.nextFrame()
@@ -162,7 +162,7 @@ has already started before CopyTo is called, CopyTo returns an
 AlreadyReadError.
 */
 func (frame *Frame) CopyTo(out io.Writer) (err error) {
-	if frame.Header.startedReading || frame.Body.startedReading {
+	if frame.header.startedReading || frame.body.startedReading {
 		return AlreadyReadError("Already read from frame, cannot copy")
 	}
 	if err = writeHeaderTo(out, frame.headerLength, frame.bodyLength); err != nil {
@@ -199,10 +199,26 @@ func (section *FrameSection) Read(p []byte) (n int, err error) {
 	return
 }
 
+func (frame *Frame) HeaderLength() int {
+	return int(frame.headerLength)
+}
+
+func (frame *Frame) BodyLength() int {
+	return int(frame.bodyLength)
+}
+
+func (frame *Frame) Header() io.Reader {
+	return frame.header
+}
+
+func (frame *Frame) Body() io.Reader {
+	return frame.body
+}
+
 func (framed *Framed) nextFrame() (frame *Frame, err error) {
 	frame = &Frame{framed: framed}
-	frame.Header = &FrameSection{frame: frame}
-	frame.Body = &FrameSection{frame: frame, init: frame.Header.drain}
+	frame.header = &FrameSection{frame: frame}
+	frame.body = &FrameSection{frame: frame, init: frame.header.drain}
 	if err = frame.readLengths(); err != nil {
 		return
 	}
@@ -216,8 +232,8 @@ func (frame *Frame) readLengths() (err error) {
 	if err = binary.Read(frame.framed, endianness, &frame.bodyLength); err != nil {
 		return
 	}
-	frame.Header.bytesRemaining = int(frame.headerLength)
-	frame.Body.bytesRemaining = int(frame.bodyLength)
+	frame.header.bytesRemaining = int(frame.headerLength)
+	frame.body.bytesRemaining = int(frame.bodyLength)
 	return
 }
 
