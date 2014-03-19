@@ -75,8 +75,8 @@ type Frame struct {
 	Header       *FrameSection
 	Body         *FrameSection
 	framed       *Framed
-	headerLength int16
-	bodyLength   int16
+	headerLength uint16
+	bodyLength   uint16
 }
 
 // FrameSection encapsulates a section of a frame (header or body)
@@ -134,7 +134,7 @@ func (framed *Framed) WriteFrame(header []byte, body []byte) (err error) {
 		bodyLength = len(body)
 	}
 
-	if err = framed.WriteHeader(int16(headerLength), int16(bodyLength)); err != nil {
+	if err = framed.WriteHeader(uint16(headerLength), uint16(bodyLength)); err != nil {
 		return err
 	}
 
@@ -152,7 +152,7 @@ func (framed *Framed) WriteFrame(header []byte, body []byte) (err error) {
 }
 
 // WriteHeader writes a frame header with the given lengths to the Framed.
-func (framed *Framed) WriteHeader(headerLength int16, bodyLength int16) (err error) {
+func (framed *Framed) WriteHeader(headerLength uint16, bodyLength uint16) (err error) {
 	return writeHeaderTo(framed, headerLength, bodyLength)
 }
 
@@ -228,7 +228,7 @@ func (section *FrameSection) drain() (err error) {
 	return
 }
 
-func writeHeaderTo(out io.Writer, headerLength int16, bodyLength int16) (err error) {
+func writeHeaderTo(out io.Writer, headerLength uint16, bodyLength uint16) (err error) {
 	if err = binary.Write(out, endianness, headerLength); err != nil {
 		return
 	}
