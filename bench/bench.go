@@ -33,6 +33,7 @@ func main() {
 		log.Fatal("Unable to create CPU profile file: %s", err)
 	}
 	if *shouldProfile {
+		log.Println("Profiling")
 		pprof.StartCPUProfile(file)
 		defer pprof.StopCPUProfile()
 	}
@@ -53,6 +54,7 @@ func server() {
 				log.Printf("Unable to accept: %s", err)
 			} else {
 				if *shouldFrame {
+					log.Println("Framing data")
 					f := framed.NewFramed(conn)
 					go func() {
 						if frame, err := f.ReadInitial(); err != nil {
@@ -73,6 +75,7 @@ func server() {
 						}
 					}()
 				} else {
+					log.Println("Doing a straight copy")
 					go io.Copy(conn, conn)
 				}
 			}
