@@ -19,9 +19,10 @@ const (
 )
 
 var (
-	mode        = flag.String("mode", "server", "Mode (server or client)")
-	shouldFrame = flag.Bool("framed", false, "Whether or not run in framed mode")
-	wg          sync.WaitGroup
+	mode          = flag.String("mode", "server", "Mode (server or client)")
+	shouldFrame   = flag.Bool("framed", false, "Whether or not run in framed mode")
+	shouldProfile = flag.Bool("profile", false, "Whether or not to profile")
+	wg            sync.WaitGroup
 )
 
 func main() {
@@ -31,8 +32,10 @@ func main() {
 	if err != nil {
 		log.Fatal("Unable to create CPU profile file: %s", err)
 	}
-	pprof.StartCPUProfile(file)
-	defer pprof.StopCPUProfile()
+	if *shouldProfile {
+		pprof.StartCPUProfile(file)
+		defer pprof.StopCPUProfile()
+	}
 	if *mode == "client" {
 		client()
 	} else {
@@ -57,7 +60,9 @@ func server() {
 						} else {
 							for {
 								if err := frame.CopyTo(conn); err != nil {
-									pprof.StopCPUProfile()
+									if *shouldProfile {
+										pprof.StopCPUProfile()
+									}
 									log.Fatalf("Unable to copy: %s", err)
 								} else {
 									if frame, err = frame.Next(); err != nil {
