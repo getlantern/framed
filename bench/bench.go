@@ -28,7 +28,7 @@ var (
 func main() {
 	runtime.GOMAXPROCS(1)
 	flag.Parse()
-	file, err := os.Create(fmt.Sprintf("/tmp/framed_profile_%s", *mode))
+	file, err := os.Create(fmt.Sprintf("/tmp/framed_cpu_%s", *mode))
 	if err != nil {
 		log.Fatal("Unable to create CPU profile file: %s", err)
 	}
@@ -64,6 +64,11 @@ func server() {
 								if err := frame.CopyTo(conn); err != nil {
 									if *shouldProfile {
 										pprof.StopCPUProfile()
+										file, err := os.Create(fmt.Sprintf("/tmp/framed_heap_%s", *mode))
+										if err != nil {
+											log.Fatal("Unable to create heap profile file: %s", err)
+										}
+										pprof.WriteHeapProfile(file)
 									}
 									log.Fatalf("Unable to copy: %s", err)
 								} else {
