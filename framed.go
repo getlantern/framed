@@ -84,6 +84,7 @@ type Frame struct {
 type FrameSection struct {
 	frame          *Frame
 	init           func() error
+	finish         func()
 	bytesRemaining int
 	startedReading bool
 }
@@ -214,7 +215,7 @@ func (frame *Frame) Body() io.Reader {
 func (framed *Framed) nextFrame() (frame *Frame, err error) {
 	frame = &Frame{framed: framed, completelyRead: make(chan bool)}
 	frame.header = &FrameSection{frame: frame}
-	frame.body = &FrameSection{frame: frame, init: frame.header.drain}
+	frame.body = &FrameSection{frame: frame, init: frame.header.drain, finish: frame.done}
 	if err = frame.readLengths(); err != nil {
 		return
 	}
@@ -238,6 +239,10 @@ func (section *FrameSection) drain() (err error) {
 		_, err = io.Copy(ioutil.Discard, section)
 	}
 	return
+}
+
+func (frame *Frame) done() {
+	frame.completelyRead <- true
 }
 
 func writeHeaderTo(out io.Writer, headerLength uint16, bodyLength uint16) (err error) {
