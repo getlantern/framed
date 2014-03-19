@@ -59,8 +59,8 @@ Although the underlying ReadWriteCloser may be safe to use from multiple
 goroutines, a Framed is not.
 */
 type Framed struct {
-	io.ReadWriteCloser // the raw underlying connection
-	hasReadInitial     bool
+	raw            io.ReadWriteCloser // the raw underlying connection
+	hasReadInitial bool
 }
 
 // AlreadyReadError is returned when someone has already read from a Frame
@@ -92,6 +92,10 @@ type frameSection struct {
 // NewFramed creates a new Framed on top of the given readWriteCloser
 func NewFramed(readWriteCloser io.ReadWriteCloser) *Framed {
 	return &Framed{readWriteCloser, false}
+}
+
+func (framed *Framed) Close() error {
+	return framed.raw.Close()
 }
 
 /*
@@ -136,13 +140,13 @@ func (framed *Framed) WriteFrame(header []byte, body []byte) (err error) {
 	}
 
 	if header != nil {
-		if _, err = framed.Write(header); err != nil {
+		if _, err = framed.raw.Write(header); err != nil {
 			return err
 		}
 	}
 
 	if body != nil {
-		_, err = framed.Write(body)
+		_, err = framed.raw.Write(body)
 	}
 
 	return
@@ -150,7 +154,7 @@ func (framed *Framed) WriteFrame(header []byte, body []byte) (err error) {
 
 // WriteHeader writes a frame header with the given lengths to the Framed.
 func (framed *Framed) WriteHeader(headerLength uint16, bodyLength uint16) (err error) {
-	return writeHeaderTo(framed, headerLength, bodyLength)
+	return writeHeaderTo(framed.raw, headerLength, bodyLength)
 }
 
 /*
@@ -166,7 +170,7 @@ func (frame *Frame) CopyTo(out io.Writer) (err error) {
 		return
 	}
 	var n int64
-	n, err = io.CopyN(out, frame.framed, int64(frame.headerLength+frame.bodyLength))
+	n, err = io.CopyN(out, frame.framed.raw, int64(frame.headerLength+frame.bodyLength))
 	frame.bytesRemaining -= int(n)
 	frame.checkDone()
 	return
@@ -189,7 +193,7 @@ func (section *frameSection) Read(p []byte) (n int, err error) {
 	if len(p) > section.bytesRemaining {
 		p = p[0:section.bytesRemaining]
 	}
-	n, err = section.frame.framed.Read(p)
+	n, err = section.frame.framed.raw.Read(p)
 	nint := int(n)
 	section.frame.bytesRemaining -= nint
 	section.bytesRemaining -= nint
@@ -202,7 +206,7 @@ func (section *frameSection) Read(p []byte) (n int, err error) {
 
 func (frame *Frame) Discard() (err error) {
 	var n int64
-	n, err = io.CopyN(ioutil.Discard, frame.framed, int64(frame.header.bytesRemaining+frame.body.bytesRemaining))
+	n, err = io.CopyN(ioutil.Discard, frame.framed.raw, int64(frame.header.bytesRemaining+frame.body.bytesRemaining))
 	frame.bytesRemaining -= int(n)
 	frame.checkDone()
 	return
@@ -250,10 +254,10 @@ func (framed *Framed) nextFrame() (frame *Frame, err error) {
 }
 
 func (frame *Frame) readLengths() (err error) {
-	if err = binary.Read(frame.framed, endianness, &frame.headerLength); err != nil {
+	if err = binary.Read(frame.framed.raw, endianness, &frame.headerLength); err != nil {
 		return
 	}
-	if err = binary.Read(frame.framed, endianness, &frame.bodyLength); err != nil {
+	if err = binary.Read(frame.framed.raw, endianness, &frame.bodyLength); err != nil {
 		return
 	}
 	frame.header.bytesRemaining = int(frame.headerLength)
