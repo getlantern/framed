@@ -221,7 +221,7 @@ func (frame *Frame) Body() io.Reader {
 }
 
 func (framed *Framed) nextFrame() (frame *Frame, err error) {
-	frame = &Frame{framed: framed, completelyRead: make(chan bool, 10)}
+	frame = &Frame{framed: framed, completelyRead: make(chan bool, 1)}
 	frame.header = &FrameSection{frame: frame}
 	frame.body = &FrameSection{frame: frame, init: frame.header.Drain, finish: frame.done}
 	if err = frame.readLengths(); err != nil {
