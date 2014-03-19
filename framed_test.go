@@ -40,19 +40,11 @@ func TestWriteAndRead(t *testing.T) {
 	if int(frame.bodyLength) != len(body) {
 		t.Errorf("Expected headerLength %d, got %d", len(body), frame.bodyLength)
 	}
-	fh, err := frame.Header()
-	if err != nil {
-		t.Fatalf("Unable to get header: %s", err)
-	}
-	fb, err := frame.Body()
-	if err != nil {
-		t.Fatalf("Unable to get body: %s", err)
-	}
-	readHeader, err := ioutil.ReadAll(fh)
+	readHeader, err := ioutil.ReadAll(frame.Header)
 	if err != nil {
 		t.Fatalf("Error reading header: %s", err)
 	}
-	readBody, err := ioutil.ReadAll(fb)
+	readBody, err := ioutil.ReadAll(frame.Body)
 	if err != nil {
 		t.Fatalf("Error reading body: %s", err)
 	}

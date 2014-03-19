@@ -69,17 +69,18 @@ func (err BufferTooSmall) Error() string {
 }
 
 type Frame struct {
-	framed        *Framed
-	headerLength  int16
-	bodyLength    int16
-	hasReadHeader bool
-	hasReadBody   bool
+	Header       *FrameSection
+	Body         *FrameSection
+	framed       *Framed
+	headerLength int16
+	bodyLength   int16
 }
 
 type FrameSection struct {
 	frame          *Frame
 	init           func() error
 	bytesRemaining int
+	startedReading bool
 }
 
 func NewFramed(readWriteCloser io.ReadWriteCloser) *Framed {
@@ -99,54 +100,13 @@ func (framed *Framed) ReadInitial() (frame *Frame, err error) {
 }
 
 func (frame *Frame) NextFrame() (nextFrame *Frame, err error) {
-	if !frame.hasReadBody {
-		if body, err := frame.Body(); err != nil {
-			return nil, err
-		} else if _, err = io.Copy(ioutil.Discard, body); err != nil {
-			return nil, err
-		}
+	if err = frame.Header.drain(); err != nil {
+		return
+	}
+	if err = frame.Body.drain(); err != nil {
+		return
 	}
 	nextFrame, err = frame.framed.nextFrame()
-	return
-}
-
-func (frame *Frame) Header() (header *FrameSection, err error) {
-	if frame.hasReadHeader {
-		return nil, AlreadyReadError("Header Already Read")
-	}
-	header = &FrameSection{frame: frame, bytesRemaining: int(frame.headerLength)}
-	frame.hasReadHeader = true
-	return
-}
-
-func (frame *Frame) Body() (body *FrameSection, err error) {
-	if frame.hasReadBody {
-		return nil, AlreadyReadError("Body Already Read")
-	}
-	body = &FrameSection{frame: frame, bytesRemaining: int(frame.bodyLength), init: frame.readHeaderIfNecessary}
-	frame.hasReadBody = true
-	return
-}
-
-func (section *FrameSection) Read(p []byte) (n int, err error) {
-	if section.init != nil {
-		if err = section.init(); err != nil {
-			return 0, err
-		}
-	}
-	if section.bytesRemaining == 0 {
-		return 0, err
-	}
-	if len(p) > section.bytesRemaining {
-		p = p[0:section.bytesRemaining]
-	}
-	n, err = section.frame.framed.Read(p)
-	if n > 0 {
-		section.bytesRemaining -= n
-	}
-	if section.bytesRemaining == 0 {
-		err = io.EOF
-	}
 	return
 }
 
@@ -166,7 +126,7 @@ func (framed *Framed) WriteHeader(headerLength int16, bodyLength int16) (err err
 }
 
 func (frame *Frame) CopyTo(out io.Writer) (err error) {
-	if frame.hasReadHeader || frame.hasReadBody {
+	if frame.Header.startedReading || frame.Body.startedReading {
 		return AlreadyReadError("Already read from frame, cannot copy")
 	}
 	if err = writeHeaderTo(out, frame.headerLength, frame.bodyLength); err != nil {
@@ -176,23 +136,56 @@ func (frame *Frame) CopyTo(out io.Writer) (err error) {
 	return
 }
 
+func (section *FrameSection) Read(p []byte) (n int, err error) {
+	if section.bytesRemaining == 0 {
+		return 0, err
+	}
+	if section.init != nil {
+		if err = section.init(); err != nil {
+			return 0, err
+		}
+	}
+	section.startedReading = true
+	if len(p) > section.bytesRemaining {
+		p = p[0:section.bytesRemaining]
+	}
+	n, err = section.frame.framed.Read(p)
+	if n > 0 {
+		section.bytesRemaining -= n
+	}
+	if section.bytesRemaining == 0 {
+		err = io.EOF
+	}
+	return
+}
+
+func (framed *Framed) nextFrame() (frame *Frame, err error) {
+	frame = &Frame{framed: framed}
+	frame.Header = &FrameSection{frame: frame}
+	frame.Body = &FrameSection{frame: frame, init: frame.Header.drain}
+	if err = frame.readLengths(); err != nil {
+		return
+	}
+	return
+}
+
 func (frame *Frame) readLengths() (err error) {
 	if err = binary.Read(frame.framed, endianness, &frame.headerLength); err != nil {
 		return
 	}
-	err = binary.Read(frame.framed, endianness, &frame.bodyLength)
+	if err = binary.Read(frame.framed, endianness, &frame.bodyLength); err != nil {
+		return
+	}
+	frame.Header.bytesRemaining = int(frame.headerLength)
+	frame.Body.bytesRemaining = int(frame.bodyLength)
 	return
 }
 
-func (frame *Frame) readHeaderIfNecessary() error {
-	if !frame.hasReadHeader {
-		if header, err := frame.Header(); err != nil {
-			return err
-		} else if _, err = io.Copy(ioutil.Discard, header); err != nil {
-			return err
-		}
+func (section *FrameSection) drain() (err error) {
+	if section.bytesRemaining > 0 {
+		_, err = io.Copy(ioutil.Discard, section)
 	}
-	return nil
+	return
 }
 
 func writeHeaderTo(out io.Writer, headerLength int16, bodyLength int16) (err error) {
@@ -200,11 +193,5 @@ func writeHeaderTo(out io.Writer, headerLength int16, bodyLength int16) (err err
 		return
 	}
 	err = binary.Write(out, endianness, bodyLength)
-	return
-}
-
-func (framed *Framed) nextFrame() (frame *Frame, err error) {
-	frame = &Frame{framed: framed}
-	err = frame.readLengths()
 	return
 }
