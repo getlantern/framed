@@ -75,16 +75,16 @@ type Frame struct {
 	framed         *Framed
 	headerLength   uint16
 	bodyLength     uint16
-	header         *FrameSection
-	body           *FrameSection
-	completelyRead chan bool
+	bytesRemaining int
+	header         *frameSection
+	body           *frameSection
+	doneReading    chan bool
 }
 
-// FrameSection encapsulates a section of a frame (header or body)
-type FrameSection struct {
+// frameSection encapsulates a section of a frame (header or body)
+type frameSection struct {
 	frame          *Frame
 	init           func() error
-	finish         func()
 	bytesRemaining int
 	startedReading bool
 }
@@ -113,7 +113,7 @@ it is called.  This method blocks until the previous frame has been consumed.
 If there are no more frames, it returns io.EOF as an error.
 */
 func (frame *Frame) Next() (nextFrame *Frame, err error) {
-	<-frame.completelyRead
+	<-frame.doneReading
 	return frame.framed.nextFrame()
 }
 
@@ -165,16 +165,18 @@ func (frame *Frame) CopyTo(out io.Writer) (err error) {
 	if err = writeHeaderTo(out, frame.headerLength, frame.bodyLength); err != nil {
 		return
 	}
-	_, err = io.CopyN(out, frame.framed, int64(frame.headerLength+frame.bodyLength))
-	frame.completelyRead <- true
+	var n int64
+	n, err = io.CopyN(out, frame.framed, int64(frame.headerLength+frame.bodyLength))
+	frame.bytesRemaining -= int(n)
+	frame.checkDone()
 	return
 }
 
 /*
-Read implements io.Reader.Read for a FrameSection.  Just like the usual Read(),
+Read implements io.Reader.Read for a frameSection.  Just like the usual Read(),
 this one may read incompletely, so make sure to call it until it returns EOF.
 */
-func (section *FrameSection) Read(p []byte) (n int, err error) {
+func (section *frameSection) Read(p []byte) (n int, err error) {
 	if section.bytesRemaining == 0 {
 		return 0, err
 	}
@@ -188,19 +190,36 @@ func (section *FrameSection) Read(p []byte) (n int, err error) {
 		p = p[0:section.bytesRemaining]
 	}
 	n, err = section.frame.framed.Read(p)
-	if n > 0 {
-		section.bytesRemaining -= n
-	}
+	nint := int(n)
+	section.frame.bytesRemaining -= nint
+	section.bytesRemaining -= nint
 	if section.bytesRemaining == 0 {
 		err = io.EOF
 	}
+	section.frame.checkDone()
 	return
 }
 
-func (section *FrameSection) Drain() (err error) {
-	if section.bytesRemaining > 0 {
-		_, err = io.Copy(ioutil.Discard, section)
+func (frame *Frame) Discard() (err error) {
+	var n int64
+	n, err = io.CopyN(ioutil.Discard, frame.framed, int64(frame.header.bytesRemaining+frame.body.bytesRemaining))
+	frame.bytesRemaining -= int(n)
+	frame.checkDone()
+	return
+}
+
+func (section *frameSection) discard() (err error) {
+	if section.init != nil {
+		section.init()
 	}
+	if section.bytesRemaining > 0 {
+		var n int64
+		n, err = io.Copy(ioutil.Discard, section)
+		nint := int(n)
+		section.frame.bytesRemaining -= nint
+		section.bytesRemaining -= nint
+	}
+	section.frame.checkDone()
 	return
 }
 
@@ -221,9 +240,9 @@ func (frame *Frame) Body() io.Reader {
 }
 
 func (framed *Framed) nextFrame() (frame *Frame, err error) {
-	frame = &Frame{framed: framed, completelyRead: make(chan bool, 1)}
-	frame.header = &FrameSection{frame: frame}
-	frame.body = &FrameSection{frame: frame, init: frame.header.Drain, finish: frame.done}
+	frame = &Frame{framed: framed, doneReading: make(chan bool, 1)}
+	frame.header = &frameSection{frame: frame}
+	frame.body = &frameSection{frame: frame, init: frame.header.discard}
 	if err = frame.readLengths(); err != nil {
 		return
 	}
@@ -239,11 +258,14 @@ func (frame *Frame) readLengths() (err error) {
 	}
 	frame.header.bytesRemaining = int(frame.headerLength)
 	frame.body.bytesRemaining = int(frame.bodyLength)
+	frame.bytesRemaining = frame.header.bytesRemaining + frame.body.bytesRemaining
 	return
 }
 
-func (frame *Frame) done() {
-	frame.completelyRead <- true
+func (frame *Frame) checkDone() {
+	if frame.bytesRemaining == 0 {
+		frame.doneReading <- true
+	}
 }
 
 func writeHeaderTo(out io.Writer, headerLength uint16, bodyLength uint16) (err error) {
