@@ -106,6 +106,11 @@ func NewFramed(readWriteCloser io.ReadWriteCloser) *Framed {
 	return &Framed{readWriteCloser, false}
 }
 
+// Close() implements method Close() from io.Closer.
+func (framed *Framed) Close() error {
+	return framed.raw.Close()
+}
+
 /*
 ReadInitial reads the initial frame from the framed.  It returns an
 AlreadyReadError if the initial frame has already been read previously.
