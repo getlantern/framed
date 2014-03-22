@@ -2,7 +2,7 @@ package framed
 
 import (
 	"bytes"
-	"github.com/oxtoacart/bpool"
+	"io"
 	"testing"
 )
 
@@ -23,20 +23,27 @@ func (buffer CloseableBuffer) Close() (err error) {
 }
 
 func TestFraming(t *testing.T) {
-	msgPart1 := []byte("This is a ")
-	msgPart2 := []byte("test message")
 	testMessage := []byte("This is a test message")
-	fbuffer := NewFramed(CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}, bpool.NewBytePool(100, 5))
-	if err := fbuffer.WriteFrame(msgPart1, msgPart2); err != nil {
+	var stream io.ReadWriteCloser
+	stream = &Framed{CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}}
+	defer stream.Close()
+
+	// Write
+	if n, err := stream.Write(testMessage); err != nil {
 		t.Errorf("Unable to write: %s", err)
+	} else if n != len(testMessage) {
+		t.Errorf("%d bytes written did not match length of test message %d", n, len(testMessage))
 	}
-	if frame, err := fbuffer.ReadFrame(); err != nil {
+
+	// Read
+	buffer := make([]byte, 100)
+	if n, err := stream.Read(buffer); err != nil {
 		t.Errorf("Unable to read: %s", err)
+	} else if n != len(testMessage) {
+		t.Errorf("%d bytes read did not match length of test message %d", n, len(testMessage))
 	} else {
-		//defer frame.Release()
-		received := bytes.Join(frame.Buffers, nil)
-		if !bytes.Equal(received, testMessage) {
-			t.Errorf("Received did not match expected.  Expected: '%s', Received: '%s'", string(testMessage), string(received))
+		if !bytes.Equal(buffer[:n], testMessage) {
+			t.Errorf("Received did not match expected.  Expected: '%s', Received: '%s'", string(testMessage), string(buffer[:n]))
 		}
 	}
 }

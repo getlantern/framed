@@ -1,5 +1,5 @@
 /*
-Package framed adds basic support for message framing over streams.
+Package framed adds basic support for message framing over Streams.
 
 Message are length-prefixed.  The first two bytes are an unsigned 16 bit int
 stored in little-endian byte order.  The remaining bytes are the bytes of the
@@ -33,107 +33,74 @@ package framed
 
 import (
 	"encoding/binary"
-	"github.com/oxtoacart/bpool"
+	"fmt"
 	"io"
 )
 
 var endianness = binary.LittleEndian
 
 /*
-A Framed enhances an io.ReadWriteCloser to provide methods that allow writing
-and reading frames.  It uses buffers from an underlying BytePool.
+A Framed enhances an io.ReadWriteCloser to write data in contiguous frames.
+
+It implements the Reader and Writer interfaces, but unlike typical Readers
+it only returns whole frames.  Unlike typical Writers, it will not allow
+frames to be fragmented.
 
 Although the underlying ReadWriteCloser may be safe to use from multiple
 goroutines, a Framed is not.
 */
 type Framed struct {
-	stream io.ReadWriteCloser // the raw underlying connection
-	pool   *bpool.BytePool    // the BytePool used for buffers
+	Stream io.ReadWriteCloser // the raw underlying connection
+
+}
+
+func (framed *Framed) Close() error {
+	return framed.Stream.Close()
 }
 
 /*
-A Frame is a Frame read from a Framed.
+Read implements the function from io.Reader.  Unlike io.Reader.Read,
+frame.Read only returns full frames of data.
 */
-type Frame struct {
-	Buffers          [][]byte
-	lastBuffer       []byte
-	pool             *bpool.BytePool
-	length           int
-	numBuffers       int
-	lastBufferLength int
-}
-
-func NewFramed(stream io.ReadWriteCloser, pool *bpool.BytePool) *Framed {
-	return &Framed{stream: stream, pool: pool}
-}
-
-/*
-ReadFrame reads the next frame from the Framed.
-*/
-func (framed *Framed) ReadFrame() (frame *Frame, err error) {
+func (framed *Framed) Read(frame []byte) (n int, err error) {
 	var nb uint16
-	err = binary.Read(framed.stream, endianness, &nb)
+	err = binary.Read(framed.Stream, endianness, &nb)
 	if err != nil {
 		return
 	}
-	frame = &Frame{
-		pool:   framed.pool,
-		length: int(nb),
-	}
-	frame.numBuffers = frame.length/framed.pool.Width() + 1
-	frame.lastBufferLength = frame.length % framed.pool.Width()
-	frame.Buffers = make([][]byte, frame.numBuffers)
-	for i := 0; i < frame.numBuffers; i++ {
-		// Set up buffer
-		buffer := framed.pool.Get()
-		bytesToRead := framed.pool.Width()
-		if i == frame.numBuffers-1 {
-			// last buffer
-			frame.lastBuffer = buffer
-			if frame.lastBufferLength != 0 {
-				// last buffer is partial
-				bytesToRead = frame.lastBufferLength
-				buffer = buffer[:bytesToRead]
-			}
-		}
-		frame.Buffers[i] = buffer
 
-		// Read into buffer
-		for totalRead := 0; totalRead < bytesToRead; {
-			var bytesRead int
-			bytesRead, err = framed.stream.Read(buffer[totalRead:])
-			if err != nil {
-				return
-			}
-			totalRead += bytesRead
-		}
-	}
-	return
-}
-
-/*
-WriteFrame writes all of the supplied bytes to the Framed as a single frame.
-*/
-func (framed *Framed) WriteFrame(byteArrays ...[]byte) (err error) {
-	var numBytes uint16
-	for _, bytes := range byteArrays {
-		numBytes += uint16(len(bytes))
-	}
-	err = binary.Write(framed.stream, endianness, numBytes)
-	for _, bytes := range byteArrays {
-		if _, err = framed.stream.Write(bytes); err != nil {
+	n = int(nb)
+	// Read into buffer
+	var totalRead int
+	for totalRead = 0; totalRead < n; {
+		var nr int
+		nr, err = framed.Stream.Read(frame[totalRead:n])
+		if err != nil {
 			return
 		}
+		totalRead += nr
+	}
+	if totalRead != n {
+		err = fmt.Errorf("%d bytes read did not match %d bytes expected", totalRead, n)
 	}
 	return
 }
 
-func (frame *Frame) Release() {
-	for i, buffer := range frame.Buffers {
-		if i == frame.numBuffers-1 {
-			frame.pool.Put(frame.lastBuffer)
-		} else {
-			frame.pool.Put(buffer)
-		}
+func (framed *Framed) Write(frame []byte) (n int, err error) {
+	n = len(frame)
+
+	// Write the length header
+	if err = binary.Write(framed.Stream, endianness, uint16(n)); err != nil {
+		return
 	}
+
+	// Write the data
+	var written int
+	if written, err = framed.Stream.Write(frame); err != nil {
+		return
+	}
+	if written != n {
+		err = fmt.Errorf("%d bytes written, expected to write %d", written, n)
+	}
+	return
 }
