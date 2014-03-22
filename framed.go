@@ -62,7 +62,7 @@ func (framed *Framed) Close() error {
 Read implements the function from io.Reader.  Unlike io.Reader.Read,
 frame.Read only returns full frames of data.
 */
-func (framed *Framed) Read(frame []byte) (n int, err error) {
+func (framed *Framed) Read(buffer []byte) (n int, err error) {
 	var nb uint16
 	err = binary.Read(framed.Stream, endianness, &nb)
 	if err != nil {
@@ -70,11 +70,16 @@ func (framed *Framed) Read(frame []byte) (n int, err error) {
 	}
 
 	n = int(nb)
+
+	bufferSize := len(buffer)
+	if n > bufferSize {
+		return 0, fmt.Errorf("Buffer of size %d is too small to hold frame of size %d", bufferSize, n)
+	}
 	// Read into buffer
 	var totalRead int
 	for totalRead = 0; totalRead < n; {
 		var nr int
-		nr, err = framed.Stream.Read(frame[totalRead:n])
+		nr, err = framed.Stream.Read(buffer[totalRead:n])
 		if err != nil {
 			return
 		}
