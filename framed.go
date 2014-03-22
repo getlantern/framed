@@ -1,33 +1,12 @@
 /*
-Package framed adds basic support for message framing over Streams.
+Package framed provides an implementation of io.ReadWriteCloser that reads and
+writes whole frames only.
 
-Message are length-prefixed.  The first two bytes are an unsigned 16 bit int
-stored in little-endian byte order.  The remaining bytes are the bytes of the
-message.
+Frames are length-prefixed.  The first two bytes are an unsigned 16 bit int
+stored in little-endian byte order.  The remaining bytes are the actual content
+of the frame.
 
-The use of a uint16 means that the maximum possible data length is 65535.
-
-Example:
-
-	package main
-
-	import (
-		"github.com/oxtoacart/framed"
-		"net"
-		"log"
-	)
-
-	func main() {
-		// Replace host:port with an actual TCP server, for example the echo service
-		if conn, err := net.Dial("tcp", "host:port"); err == nil {
-			framedConn = Framed{conn}
-			if err := framedConn.Write([]byte("Hello World")); err == nil {
-				if resp, err := framedConn.Read(); err == nil {
-					log.Println("We're done!")
-				}
-			}
-		}
-	}
+The use of a uint16 means that the maximum possible frame length is 65535.
 */
 package framed
 
@@ -91,6 +70,10 @@ func (framed *Framed) Read(buffer []byte) (n int, err error) {
 	return
 }
 
+/*
+Write implements the Write method from io.Writer.  It prepends a frame length
+header that allows the Framed on the other end to read the whole frame.
+*/
 func (framed *Framed) Write(frame []byte) (n int, err error) {
 	n = len(frame)
 
