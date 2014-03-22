@@ -57,6 +57,7 @@ package framed
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"io/ioutil"
 )
@@ -71,7 +72,7 @@ Although the underlying ReadWriteCloser may be safe to use from multiple
 goroutines, a Framed is not.
 */
 type Framed struct {
-	raw            io.ReadWriteCloser // the raw underlying connection
+	stream         io.ReadWriteCloser // the raw underlying connection
 	hasReadInitial bool
 }
 
@@ -108,7 +109,12 @@ func NewFramed(readWriteCloser io.ReadWriteCloser) *Framed {
 
 // Close() implements method Close() from io.Closer.
 func (framed *Framed) Close() error {
-	return framed.raw.Close()
+	return framed.stream.Close()
+}
+
+// Write() implements method Write() from io.Writer.
+func (framed *Framed) Write(p []byte) (n int, err error) {
+	return framed.stream.Write(p)
 }
 
 /*
@@ -153,13 +159,31 @@ func (framed *Framed) WriteFrame(header []byte, body []byte) (err error) {
 	}
 
 	if header != nil {
-		if _, err = framed.raw.Write(header); err != nil {
+		if _, err = framed.stream.Write(header); err != nil {
 			return err
 		}
 	}
 
 	if body != nil {
-		_, err = framed.raw.Write(body)
+		_, err = framed.stream.Write(body)
+	}
+
+	return
+}
+
+/*
+StreamBody writes the body to the framed.
+*/
+func (framed *Framed) StreamBody(bodyLength uint16, body io.Reader) (err error) {
+
+	bodyLength64 := int64(bodyLength)
+
+	if body != nil {
+		if n, err := io.CopyN(framed.stream, body, bodyLength64); err != nil {
+			return err
+		} else if n != bodyLength64 {
+			return fmt.Errorf("Amount of body data written did not match bodyLength.  Expected %d, wrote %d.", bodyLength, n)
+		}
 	}
 
 	return
@@ -167,7 +191,7 @@ func (framed *Framed) WriteFrame(header []byte, body []byte) (err error) {
 
 // WriteHeader writes a frame header with the given lengths to the Framed.
 func (framed *Framed) WriteHeader(headerLength uint16, bodyLength uint16) (err error) {
-	return writeHeaderTo(framed.raw, headerLength, bodyLength)
+	return writeHeaderTo(framed.stream, headerLength, bodyLength)
 }
 
 /*
@@ -183,7 +207,7 @@ func (frame *Frame) CopyTo(out io.Writer) (err error) {
 		return
 	}
 	var n int64
-	n, err = io.CopyN(out, frame.framed.raw, int64(frame.headerLength+frame.bodyLength))
+	n, err = io.CopyN(out, frame.framed.stream, int64(frame.headerLength+frame.bodyLength))
 	frame.bytesRemaining -= int(n)
 	frame.checkDone()
 	return
@@ -206,7 +230,7 @@ func (section *frameSection) Read(p []byte) (n int, err error) {
 	if len(p) > section.bytesRemaining {
 		p = p[0:section.bytesRemaining]
 	}
-	n, err = section.frame.framed.raw.Read(p)
+	n, err = section.frame.framed.stream.Read(p)
 	nint := int(n)
 	section.frame.bytesRemaining -= nint
 	section.bytesRemaining -= nint
@@ -219,7 +243,7 @@ func (section *frameSection) Read(p []byte) (n int, err error) {
 
 func (frame *Frame) Discard() (err error) {
 	var n int64
-	n, err = io.CopyN(ioutil.Discard, frame.framed.raw, int64(frame.header.bytesRemaining+frame.body.bytesRemaining))
+	n, err = io.CopyN(ioutil.Discard, frame.framed.stream, int64(frame.header.bytesRemaining+frame.body.bytesRemaining))
 	frame.bytesRemaining -= int(n)
 	frame.checkDone()
 	return
@@ -261,16 +285,16 @@ func (framed *Framed) nextFrame() (frame *Frame, err error) {
 	frame.header = &frameSection{frame: frame}
 	frame.body = &frameSection{frame: frame, init: frame.header.discard}
 	if err = frame.readLengths(); err != nil {
-		return
+		return nil, err
 	}
 	return
 }
 
 func (frame *Frame) readLengths() (err error) {
-	if err = binary.Read(frame.framed.raw, endianness, &frame.headerLength); err != nil {
+	if err = binary.Read(frame.framed.stream, endianness, &frame.headerLength); err != nil {
 		return
 	}
-	if err = binary.Read(frame.framed.raw, endianness, &frame.bodyLength); err != nil {
+	if err = binary.Read(frame.framed.stream, endianness, &frame.bodyLength); err != nil {
 		return
 	}
 	frame.header.bytesRemaining = int(frame.headerLength)
