@@ -1,7 +1,7 @@
 To install:
 
-`go get github.com/oxtoacart/framed`
+`go get github.com/getlantern/framed`
 
 For docs:
 
-`godoc github.com/oxtoacart/framed`
+`godoc github.com/getlantern/framed`
