@@ -19,37 +19,37 @@ import (
 var endianness = binary.LittleEndian
 
 /*
-A FramedReader enhances an io.ReadCloser to read data in contiguous frames.
+A framed.Reader enhances an io.ReadCloser to read data in contiguous frames.
 It implements the io.Reader interface, but nlike typical Readers it only returns
 whole frames.  Unlike typical Writers, it will not allow frames to be
 fragmented.
 
 Although the underlying stream may be safe to use from multiple
-goroutines, a FramedReader is not.
+goroutines, a framed.Reader is not.
 */
-type FramedReader struct {
+type Reader struct {
 	Stream io.Reader // the raw underlying connection
 }
 
 /*
-A FramedWriter enhances an io.WriteCLoser to write data in contiguous frames.
+A framed.Writer enhances an io.WriteCLoser to write data in contiguous frames.
 It implements the io.Writer interface, but unlike typical Writers, it includes
-information that allows a corresponding FramedReader to read whole frames
+information that allows a corresponding framed.Reader to read whole frames
 without them being fragmented.
 
 Although the underlying stream may be safe to use from multiple
-goroutines, a FramedWriter is not.
+goroutines, a framed.Writer is not.
 */
-type FramedWriter struct {
+type Writer struct {
 	Stream io.Writer // the raw underlying connection
 }
 
 /*
 Read implements the function from io.Reader.  Unlike io.Reader.Read,
 frame.Read only returns full frames of data (assuming that the data was written
-by a FramedWriter).
+by a framed.Writer).
 */
-func (framed *FramedReader) Read(buffer []byte) (n int, err error) {
+func (framed *Reader) Read(buffer []byte) (n int, err error) {
 	var nb uint16
 	err = binary.Read(framed.Stream, endianness, &nb)
 	if err != nil {
@@ -80,9 +80,9 @@ func (framed *FramedReader) Read(buffer []byte) (n int, err error) {
 
 /*
 Write implements the Write method from io.Writer.  It prepends a frame length
-header that allows the FramedReader on the other end to read the whole frame.
+header that allows the framed.Reader on the other end to read the whole frame.
 */
-func (framed *FramedWriter) Write(frame []byte) (n int, err error) {
+func (framed *Writer) Write(frame []byte) (n int, err error) {
 	n = len(frame)
 
 	// Write the length header
