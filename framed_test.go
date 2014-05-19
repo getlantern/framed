@@ -2,7 +2,6 @@ package framed
 
 import (
 	"bytes"
-	"io"
 	"testing"
 )
 
@@ -24,12 +23,13 @@ func (buffer CloseableBuffer) Close() (err error) {
 
 func TestFraming(t *testing.T) {
 	testMessage := []byte("This is a test message")
-	var stream io.ReadWriteCloser
-	stream = &Framed{CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}}
-	defer stream.Close()
+	cb := CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}
+	writer := &FramedWriter{cb}
+	reader := &FramedReader{cb}
+	defer cb.Close()
 
 	// Write
-	if n, err := stream.Write(testMessage); err != nil {
+	if n, err := writer.Write(testMessage); err != nil {
 		t.Errorf("Unable to write: %s", err)
 	} else if n != len(testMessage) {
 		t.Errorf("%d bytes written did not match length of test message %d", n, len(testMessage))
@@ -37,7 +37,7 @@ func TestFraming(t *testing.T) {
 
 	// Read
 	buffer := make([]byte, 100)
-	if n, err := stream.Read(buffer); err != nil {
+	if n, err := reader.Read(buffer); err != nil {
 		t.Errorf("Unable to read: %s", err)
 	} else if n != len(testMessage) {
 		t.Errorf("%d bytes read did not match length of test message %d", n, len(testMessage))
