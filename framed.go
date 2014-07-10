@@ -45,8 +45,8 @@ It implements the io.Writer interface, but unlike typical Writers, it includes
 information that allows a corresponding framed.Reader to read whole frames
 without them being fragmented.
 
-Although the underlying stream may be safe to use from multiple
-goroutines, a framed.Writer is not.
+A framed.Writer also supports a method that writes multiple buffers to the
+underlying stream as a single frame.
 */
 type Writer struct {
 	Stream io.Writer // the raw underlying connection
@@ -114,6 +114,34 @@ func (framed *Writer) Write(frame []byte) (n int, err error) {
 	var written int
 	if written, err = framed.Stream.Write(frame); err != nil {
 		return
+	}
+	if written != n {
+		err = fmt.Errorf("%d bytes written, expected to write %d", written, n)
+	}
+	return
+}
+
+func (framed *Writer) WritePieces(pieces ...[]byte) (n int, err error) {
+	framed.mutex.Lock()
+	defer framed.mutex.Unlock()
+
+	for _, piece := range pieces {
+		n = n + len(piece)
+	}
+
+	// Write the length header
+	if err = binary.Write(framed.Stream, endianness, uint16(n)); err != nil {
+		return
+	}
+
+	// Write the data
+	var written int
+	for _, piece := range pieces {
+		var nw int
+		if nw, err = framed.Stream.Write(piece); err != nil {
+			return
+		}
+		written = written + nw
 	}
 	if written != n {
 		err = fmt.Errorf("%d bytes written, expected to write %d", written, n)

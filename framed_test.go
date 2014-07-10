@@ -47,3 +47,32 @@ func TestFraming(t *testing.T) {
 		}
 	}
 }
+
+func TestPieces(t *testing.T) {
+	testMessage := []byte("This is a test message")
+	cb := CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}
+	writer := NewWriter(cb)
+	reader := NewReader(cb)
+	defer cb.Close()
+
+	// Write
+	piece1 := testMessage[:10]
+	piece2 := testMessage[10:]
+	if n, err := writer.WritePieces(piece1, piece2); err != nil {
+		t.Errorf("Unable to write: %s", err)
+	} else if n != len(testMessage) {
+		t.Errorf("%d bytes written did not match length of test message %d", n, len(testMessage))
+	}
+
+	// Read
+	buffer := make([]byte, 100)
+	if n, err := reader.Read(buffer); err != nil {
+		t.Errorf("Unable to read: %s", err)
+	} else if n != len(testMessage) {
+		t.Errorf("%d bytes read did not match length of test message %d", n, len(testMessage))
+	} else {
+		if !bytes.Equal(buffer[:n], testMessage) {
+			t.Errorf("Received did not match expected.  Expected: '%s', Received: '%s'", string(testMessage), string(buffer[:n]))
+		}
+	}
+}
