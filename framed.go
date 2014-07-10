@@ -15,6 +15,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"sync"
 )
 
 const (
@@ -49,6 +50,11 @@ goroutines, a framed.Writer is not.
 */
 type Writer struct {
 	Stream io.Writer // the raw underlying connection
+	mutex  sync.Mutex
+}
+
+func NewWriter(stream io.Writer) *Writer {
+	return &Writer{Stream: stream}
 }
 
 /*
@@ -90,6 +96,9 @@ Write implements the Write method from io.Writer.  It prepends a frame length
 header that allows the framed.Reader on the other end to read the whole frame.
 */
 func (framed *Writer) Write(frame []byte) (n int, err error) {
+	framed.mutex.Lock()
+	defer framed.mutex.Unlock()
+
 	n = len(frame)
 
 	// Write the length header
