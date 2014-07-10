@@ -6,7 +6,8 @@ Frames are length-prefixed.  The first two bytes are an unsigned 16 bit int
 stored in little-endian byte order.  The remaining bytes are the actual content
 of the frame.
 
-The use of a uint16 means that the maximum possible frame length is 65535.
+The use of a uint16 means that the maximum possible frame size (MAX_FRAME_SIZE)
+is 65535.
 */
 package framed
 
@@ -14,6 +15,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+)
+
+const (
+	// MAX_FRAME_SIZE is the maximum possible size of a frame (not including the
+	// length prefix)
+	MAX_FRAME_SIZE = 65535
 )
 
 var endianness = binary.LittleEndian
