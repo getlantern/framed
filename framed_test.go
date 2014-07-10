@@ -25,7 +25,7 @@ func TestFraming(t *testing.T) {
 	testMessage := []byte("This is a test message")
 	cb := CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}
 	writer := NewWriter(cb)
-	reader := &Reader{cb}
+	reader := NewReader(cb)
 	defer cb.Close()
 
 	// Write

@@ -53,8 +53,12 @@ type Writer struct {
 	mutex  sync.Mutex
 }
 
-func NewWriter(stream io.Writer) *Writer {
-	return &Writer{Stream: stream}
+func NewReader(r io.Reader) *Reader {
+	return &Reader{Stream: r}
+}
+
+func NewWriter(w io.Writer) *Writer {
+	return &Writer{Stream: w}
 }
 
 /*
