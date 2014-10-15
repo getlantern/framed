@@ -80,18 +80,7 @@ func (framed *Reader) Read(buffer []byte) (n int, err error) {
 		return 0, fmt.Errorf("Buffer of size %d is too small to hold frame of size %d", bufferSize, n)
 	}
 	// Read into buffer
-	var totalRead int
-	for totalRead = 0; totalRead < n; {
-		var nr int
-		nr, err = framed.Stream.Read(buffer[totalRead:n])
-		if err != nil {
-			return
-		}
-		totalRead += nr
-	}
-	if totalRead != n {
-		err = fmt.Errorf("%d bytes read did not match %d bytes expected", totalRead, n)
-	}
+	n, err = io.ReadFull(framed.Stream, buffer[:n])
 	return
 }
 
