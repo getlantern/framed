@@ -37,6 +37,7 @@ goroutines, a framed.Reader is not.
 */
 type Reader struct {
 	Stream io.Reader // the raw underlying connection
+	mutex  sync.Mutex
 }
 
 /*
@@ -67,6 +68,9 @@ frame.Read only returns full frames of data (assuming that the data was written
 by a framed.Writer).
 */
 func (framed *Reader) Read(buffer []byte) (n int, err error) {
+	framed.mutex.Lock()
+	defer framed.mutex.Unlock()
+
 	var nb uint16
 	err = binary.Read(framed.Stream, endianness, &nb)
 	if err != nil {
@@ -79,6 +83,7 @@ func (framed *Reader) Read(buffer []byte) (n int, err error) {
 	if n > bufferSize {
 		return 0, fmt.Errorf("Buffer of size %d is too small to hold frame of size %d", bufferSize, n)
 	}
+
 	// Read into buffer
 	n, err = io.ReadFull(framed.Stream, buffer[:n])
 	return

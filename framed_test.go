@@ -2,7 +2,13 @@ package framed
 
 import (
 	"bytes"
+	"sync"
 	"testing"
+	"time"
+)
+
+const (
+	sleepTime = 5 * time.Millisecond
 )
 
 type CloseableBuffer struct {
@@ -10,10 +16,14 @@ type CloseableBuffer struct {
 }
 
 func (buffer CloseableBuffer) Read(data []byte) (n int, err error) {
+	// Sleep a bit after reading to surface concurrency issues
+	defer time.Sleep(sleepTime)
 	return buffer.raw.Read(data)
 }
 
 func (buffer CloseableBuffer) Write(data []byte) (n int, err error) {
+	// Sleep a bit after writing to surface concurrency issues
+	defer time.Sleep(sleepTime)
 	return buffer.raw.Write(data)
 }
 
@@ -23,56 +33,52 @@ func (buffer CloseableBuffer) Close() (err error) {
 
 func TestFraming(t *testing.T) {
 	testMessage := []byte("This is a test message")
+	piece1 := testMessage[:8]
+	piece2 := testMessage[8:]
 	cb := CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}
+	defer cb.Close()
 	writer := NewWriter(cb)
 	reader := NewReader(cb)
-	defer cb.Close()
 
-	// Write
-	if n, err := writer.Write(testMessage); err != nil {
-		t.Errorf("Unable to write: %s", err)
-	} else if n != len(testMessage) {
-		t.Errorf("%d bytes written did not match length of test message %d", n, len(testMessage))
+	// Do a bunch of concurrent reads and writes to make sure we're threadsafe
+	iters := 100
+	var wg sync.WaitGroup
+	for i := 0; i < iters; i++ {
+		wg.Add(2)
+		writePieces := i%2 == 0
+
+		go func() {
+			// Write
+			var n int
+			var err error
+			if writePieces {
+				n, err = writer.WritePieces(piece1, piece2)
+			} else {
+				n, err = writer.Write(testMessage)
+			}
+			if err != nil {
+				t.Errorf("Unable to write: %s", err)
+			} else if n != len(testMessage) {
+				t.Errorf("%d bytes written did not match length of test message %d", n, len(testMessage))
+			}
+			wg.Done()
+		}()
+
+		go func() {
+			// Read
+			buffer := make([]byte, 100)
+			if n, err := reader.Read(buffer); err != nil {
+				t.Errorf("Unable to read: %s", err)
+			} else if n != len(testMessage) {
+				t.Errorf("%d bytes read did not match length of test message %d", n, len(testMessage))
+			} else {
+				if !bytes.Equal(buffer[:n], testMessage) {
+					t.Errorf("Received did not match expected.  Expected: '%s', Received: '%s'", string(testMessage), string(buffer[:n]))
+				}
+			}
+			wg.Done()
+		}()
 	}
 
-	// Read
-	buffer := make([]byte, 100)
-	if n, err := reader.Read(buffer); err != nil {
-		t.Errorf("Unable to read: %s", err)
-	} else if n != len(testMessage) {
-		t.Errorf("%d bytes read did not match length of test message %d", n, len(testMessage))
-	} else {
-		if !bytes.Equal(buffer[:n], testMessage) {
-			t.Errorf("Received did not match expected.  Expected: '%s', Received: '%s'", string(testMessage), string(buffer[:n]))
-		}
-	}
-}
-
-func TestPieces(t *testing.T) {
-	testMessage := []byte("This is a test message")
-	cb := CloseableBuffer{bytes.NewBuffer(make([]byte, 0))}
-	writer := NewWriter(cb)
-	reader := NewReader(cb)
-	defer cb.Close()
-
-	// Write
-	piece1 := testMessage[:10]
-	piece2 := testMessage[10:]
-	if n, err := writer.WritePieces(piece1, piece2); err != nil {
-		t.Errorf("Unable to write: %s", err)
-	} else if n != len(testMessage) {
-		t.Errorf("%d bytes written did not match length of test message %d", n, len(testMessage))
-	}
-
-	// Read
-	buffer := make([]byte, 100)
-	if n, err := reader.Read(buffer); err != nil {
-		t.Errorf("Unable to read: %s", err)
-	} else if n != len(testMessage) {
-		t.Errorf("%d bytes read did not match length of test message %d", n, len(testMessage))
-	} else {
-		if !bytes.Equal(buffer[:n], testMessage) {
-			t.Errorf("Received did not match expected.  Expected: '%s', Received: '%s'", string(testMessage), string(buffer[:n]))
-		}
-	}
+	wg.Wait()
 }
