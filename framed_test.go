@@ -46,6 +46,7 @@ func TestFraming(t *testing.T) {
 	for i := 0; i < iters; i++ {
 		wg.Add(2)
 		writePieces := i%2 == 0
+		readFrame := i%3 == 0
 
 		go func() {
 			// Write
@@ -66,15 +67,29 @@ func TestFraming(t *testing.T) {
 
 		go func() {
 			// Read
+			var frame []byte
+			var n int
+			var err error
 			buffer := make([]byte, 100)
-			if n, err := reader.Read(buffer); err != nil {
-				t.Errorf("Unable to read: %s", err)
-			} else if n != len(testMessage) {
-				t.Errorf("%d bytes read did not match length of test message %d", n, len(testMessage))
-			} else {
-				if !bytes.Equal(buffer[:n], testMessage) {
-					t.Errorf("Received did not match expected.  Expected: '%s', Received: '%s'", string(testMessage), string(buffer[:n]))
+
+			if readFrame {
+				if frame, err = reader.ReadFrame(); err != nil {
+					t.Errorf("Unable to read frame: %s", err)
+					return
 				}
+			} else {
+				if n, err = reader.Read(buffer); err != nil {
+					t.Errorf("Unable to read: %s", err)
+					return
+				} else if n != len(testMessage) {
+					t.Errorf("%d bytes read did not match length of test message %d", n, len(testMessage))
+					return
+				}
+				frame = buffer[:n]
+			}
+
+			if !bytes.Equal(frame, testMessage) {
+				t.Errorf("Received did not match expected.  Expected: '%q', Received: '%q'", testMessage, frame)
 			}
 			wg.Done()
 		}()

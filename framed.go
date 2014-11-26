@@ -6,7 +6,7 @@ Frames are length-prefixed.  The first two bytes are an unsigned 16 bit int
 stored in little-endian byte order indicating the length of the content.  The
 remaining bytes are the actual content of the frame.
 
-The use of a uint16 means that the maximum possible frame size (MAX_FRAME_SIZE)
+The use of a uint16 means that the maximum possible frame size (MaxFrameSize)
 is 65535.
 */
 package framed
@@ -19,21 +19,20 @@ import (
 )
 
 const (
-	// MAX_FRAME_SIZE is the maximum possible size of a frame (not including the
+	// MaxFrameSize is the maximum possible size of a frame (not including the
 	// length prefix)
-	MAX_FRAME_SIZE = 65535
+	MaxFrameSize = 65535
 )
 
 var endianness = binary.LittleEndian
 
 /*
-A framed.Reader enhances an io.ReadCloser to read data in contiguous frames.
-It implements the io.Reader interface, but nlike typical Readers it only returns
-whole frames.  Unlike typical Writers, it will not allow frames to be
-fragmented.
+A Reader enhances an io.ReadCloser to read data in contiguous frames. It
+implements the io.Reader interface, but unlike typical io.Readers it only
+returns whole frames.
 
-Although the underlying stream may be safe to use from multiple
-goroutines, a framed.Reader is not.
+A Reader also supports the ability to read frames using dynamically allocated
+buffers via the ReadFrame method.
 */
 type Reader struct {
 	Stream io.Reader // the raw underlying connection
@@ -41,13 +40,13 @@ type Reader struct {
 }
 
 /*
-A framed.Writer enhances an io.WriteCLoser to write data in contiguous frames.
-It implements the io.Writer interface, but unlike typical Writers, it includes
-information that allows a corresponding framed.Reader to read whole frames
-without them being fragmented.
+A Writer enhances an io.WriteCLoser to write data in contiguous frames. It
+implements the io.Writer interface, but unlike typical io.Writers, it includes
+information that allows a corresponding Reader to read whole frames without them
+being fragmented.
 
-A framed.Writer also supports a method that writes multiple buffers to the
-underlying stream as a single frame.
+A Writer also supports a method that writes multiple buffers to the underlying
+stream as a single frame.
 */
 type Writer struct {
 	Stream io.Writer // the raw underlying connection
@@ -86,6 +85,28 @@ func (framed *Reader) Read(buffer []byte) (n int, err error) {
 
 	// Read into buffer
 	n, err = io.ReadFull(framed.Stream, buffer[:n])
+	return
+}
+
+// ReadFrame reads the next frame, using a new buffer sized to hold the frame.
+func (framed *Reader) ReadFrame() (frame []byte, err error) {
+	framed.mutex.Lock()
+	defer framed.mutex.Unlock()
+
+	var nb uint16
+	err = binary.Read(framed.Stream, endianness, &nb)
+	if err != nil {
+		return
+	}
+
+	l := int(nb)
+	frame = make([]byte, l)
+
+	// Read into buffer
+	n, err := io.ReadFull(framed.Stream, frame)
+	if n != l {
+		return nil, fmt.Errorf("Read wrong number of bytes. Expected frame of length %d, got %d", n, l)
+	}
 	return
 }
 
