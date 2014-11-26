@@ -19,6 +19,8 @@ import (
 )
 
 const (
+	// FrameHeaderSize is the size of the frame header in bytes
+	FrameHeaderSize = 2
 	// MaxFrameSize is the maximum possible size of a frame (not including the
 	// length prefix)
 	MaxFrameSize = 65535
