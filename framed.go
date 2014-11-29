@@ -19,12 +19,15 @@ import (
 )
 
 const (
+	// FrameHeaderBits is the size of the frame header in bits
+	FrameHeaderBits = 16
+
 	// FrameHeaderSize is the size of the frame header in bytes
-	FrameHeaderSize = 2
+	FrameHeaderSize = 16 / 2
 
 	// MaxFrameSize is the maximum possible size of a frame (not including the
 	// length prefix)
-	MaxFrameSize = 65535
+	MaxFrameSize = 1<<FrameHeaderBits - 1
 )
 
 var endianness = binary.LittleEndian
