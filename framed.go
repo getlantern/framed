@@ -1,6 +1,6 @@
 /*
-Package framed provides an implementation of io.ReadWriteCloser that reads and
-writes whole frames only.
+Package framed provides an implementations of io.Writer and io.Reader that write
+and read whole frames only.
 
 Frames are length-prefixed.  The first two bytes are an unsigned 16 bit int
 stored in little-endian byte order indicating the length of the content.  The
@@ -22,12 +22,14 @@ const (
 	// FrameHeaderBits is the size of the frame header in bits
 	FrameHeaderBits = 16
 
-	// FrameHeaderSize is the size of the frame header in bytes
-	FrameHeaderSize = 16 / 2
+	// FrameHeaderLength is the size of the frame header in bytes
+	FrameHeaderLength = FrameHeaderBits / 8
 
-	// MaxFrameSize is the maximum possible size of a frame (not including the
+	// MaxFrameLength is the maximum possible size of a frame (not including the
 	// length prefix)
-	MaxFrameSize = 1<<FrameHeaderBits - 1
+	MaxFrameLength = 1<<FrameHeaderBits - 1
+
+	tooLongError = "Attempted to write frame of length %s which is longer than maximum allowed length of %s"
 )
 
 var endianness = binary.LittleEndian
@@ -109,10 +111,7 @@ func (framed *Reader) ReadFrame() (frame []byte, err error) {
 	frame = make([]byte, l)
 
 	// Read into buffer
-	n, err := io.ReadFull(framed.Stream, frame)
-	if n != l {
-		return nil, fmt.Errorf("Read wrong number of bytes. Expected frame of length %d, got %d", n, l)
-	}
+	_, err = io.ReadFull(framed.Stream, frame)
 	return
 }
 
@@ -125,6 +124,9 @@ func (framed *Writer) Write(frame []byte) (n int, err error) {
 	defer framed.mutex.Unlock()
 
 	n = len(frame)
+	if n > MaxFrameLength {
+		return 0, fmt.Errorf(tooLongError, n, MaxFrameLength)
+	}
 
 	// Write the length header
 	if err = binary.Write(framed.Stream, endianness, uint16(n)); err != nil {
@@ -148,6 +150,10 @@ func (framed *Writer) WritePieces(pieces ...[]byte) (n int, err error) {
 
 	for _, piece := range pieces {
 		n = n + len(piece)
+	}
+
+	if n > MaxFrameLength {
+		return 0, fmt.Errorf(tooLongError, n, MaxFrameLength)
 	}
 
 	// Write the length header

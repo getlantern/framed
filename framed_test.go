@@ -2,9 +2,12 @@ package framed
 
 import (
 	"bytes"
+	"io/ioutil"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/getlantern/testify/assert"
 )
 
 const (
@@ -59,8 +62,8 @@ func TestFraming(t *testing.T) {
 			}
 			if err != nil {
 				t.Errorf("Unable to write: %s", err)
-			} else if n != len(testMessage) {
-				t.Errorf("%d bytes written did not match length of test message %d", n, len(testMessage))
+			} else {
+				assert.Equal(t, len(testMessage), n, "Bytes written should match length of test message")
 			}
 			wg.Done()
 		}()
@@ -81,19 +84,39 @@ func TestFraming(t *testing.T) {
 				if n, err = reader.Read(buffer); err != nil {
 					t.Errorf("Unable to read: %s", err)
 					return
-				} else if n != len(testMessage) {
-					t.Errorf("%d bytes read did not match length of test message %d", n, len(testMessage))
-					return
+				} else {
+					assert.Equal(t, len(testMessage), n, "Bytes read should match length of test message")
 				}
 				frame = buffer[:n]
 			}
 
-			if !bytes.Equal(frame, testMessage) {
-				t.Errorf("Received did not match expected.  Expected: '%q', Received: '%q'", testMessage, frame)
-			}
+			assert.Equal(t, testMessage, frame, "Received should match sent")
 			wg.Done()
 		}()
 	}
 
 	wg.Wait()
+}
+
+func TestWriteTooLong(t *testing.T) {
+	w := NewWriter(ioutil.Discard)
+	b := make([]byte, MaxFrameLength+1)
+	n, err := w.Write(b)
+	assert.Error(t, err, "Writing too long message should result in error")
+	assert.Equal(t, 0, n, "Writing too long message should result in 0 bytes written")
+	n, err = w.Write(b[:len(b)-1])
+	assert.NoError(t, err, "Writing message of MaxFrameLength should be allowed")
+	assert.Equal(t, MaxFrameLength, n, "Writing message of MaxFrameLength should have written MaxFrameLength bytes")
+}
+
+func TestWritePiecesTooLong(t *testing.T) {
+	w := NewWriter(ioutil.Discard)
+	b1 := make([]byte, MaxFrameLength)
+	b2 := make([]byte, 1)
+	n, err := w.WritePieces(b1, b2)
+	assert.Error(t, err, "Writing too long message should result in error")
+	assert.Equal(t, 0, n, "Writing too long message should result in 0 bytes written")
+	n, err = w.WritePieces(b1[:len(b1)-1], b2)
+	assert.NoError(t, err, "Writing message of MaxFrameLength should be allowed")
+	assert.Equal(t, MaxFrameLength, n, "Writing message of MaxFrameLength should have written MaxFrameLength bytes")
 }
