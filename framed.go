@@ -29,7 +29,7 @@ const (
 	// length prefix)
 	MaxFrameLength = 1<<FrameHeaderBits - 1
 
-	tooLongError = "Attempted to write frame of length %s which is longer than maximum allowed length of %s"
+	tooLongError = "Attempted to write frame of length %d which is longer than maximum allowed length of %d"
 )
 
 var endianness = binary.LittleEndian
