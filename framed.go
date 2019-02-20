@@ -61,12 +61,26 @@ type Writer struct {
 	mutex  sync.Mutex
 }
 
+/*
+ReadWriteCloser combines a Reader and a Writer on top of an underlying
+ReadWriteCloser.
+*/
+type ReadWriteCloser struct {
+	Reader
+	Writer
+	io.Closer
+}
+
 func NewReader(r io.Reader) *Reader {
 	return &Reader{Stream: r}
 }
 
 func NewWriter(w io.Writer) *Writer {
 	return &Writer{Stream: w}
+}
+
+func NewReadWriteCloser(rwc io.ReadWriteCloser) *ReadWriteCloser {
+	return &ReadWriteCloser{Reader{Stream: rwc}, Writer{Stream: rwc}, rwc}
 }
 
 /*
