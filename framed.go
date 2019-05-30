@@ -126,16 +126,6 @@ type ReadWriteCloser struct {
 	io.Closer
 }
 
-/*
-ReadWriteCloser combines a Reader and a Writer on top of an underlying
-ReadWriteCloser.
-*/
-type ReadWriteCloser struct {
-	Reader
-	Writer
-	io.Closer
-}
-
 func NewReader(r io.Reader) *Reader {
 	return &Reader{
 		Stream: r,
@@ -176,10 +166,6 @@ func (fr *Reader) EnableBuffering(size int) {
 	fr.mutex.Lock()
 	fr.Stream = bufio.NewReaderSize(fr.Stream, size+fr.headerLength)
 	fr.mutex.Unlock()
-}
-
-func NewReadWriteCloser(rwc io.ReadWriteCloser) *ReadWriteCloser {
-	return &ReadWriteCloser{Reader{Stream: rwc}, Writer{Stream: rwc}, rwc}
 }
 
 /*
