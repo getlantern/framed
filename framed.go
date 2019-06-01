@@ -325,5 +325,5 @@ func NewHeaderPreservingBufferPool(maxSize int, width int, enableBigFrames bool)
 	if enableBigFrames {
 		headerLength = FrameHeaderLengthBig
 	}
-	return bpool.NewHeaderPreservingByteSlicePool(maxSize, width, headerLength)
+	return bpool.NewHeaderPreservingByteSlicePool(maxSize/(width+headerLength), width, headerLength)
 }
